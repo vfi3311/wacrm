@@ -1,4 +1,3 @@
-import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
@@ -61,13 +60,15 @@ const SECURITY_HEADERS = [
       "form-action 'self'",
     ].join("; "),
   },
-] as const;
+];
 
-const APP_LOCALE = ["en", "pt", "es", "ko"].includes(process.env.NEXT_PUBLIC_APP_LOCALE ?? "")
-  ? (process.env.NEXT_PUBLIC_APP_LOCALE as string)
+const configuredLocale = process.env.NEXT_PUBLIC_APP_LOCALE ?? "";
+const APP_LOCALE = ["en", "pt", "es", "ko"].includes(configuredLocale)
+  ? configuredLocale
   : "en";
 
-const nextConfig: NextConfig = {
+/** @type {import("next").NextConfig} */
+const nextConfig = {
   turbopack: {
     resolveAlias: {
       "@app-messages": `./messages/${APP_LOCALE}.json`,

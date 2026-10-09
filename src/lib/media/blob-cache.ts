@@ -6,7 +6,7 @@
  *   1. INBOUND — `/api/whatsapp/media/<mediaId>`, our own auth-gated proxy
  *      (`src/app/api/whatsapp/media/[mediaId]/route.ts`). Meta only hands
  *      the bytes to a request carrying the account's access token, so the
- *      browser can't reach them on its own, and `next.config.ts` puts
+ *      browser can't reach them on its own, and `next.config.mjs` puts
  *      `Cache-Control: no-store` on every `/api/*` response, so nothing
  *      caches them at the HTTP layer either.
  *
