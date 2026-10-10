@@ -66,7 +66,7 @@ const SECURITY_HEADERS = [
 const configuredLocale = process.env.NEXT_PUBLIC_APP_LOCALE ?? "";
 const APP_LOCALE = ["en", "pt", "es", "ko"].includes(configuredLocale)
   ? configuredLocale
-  : "en";
+  : "pt";
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
