@@ -97,6 +97,7 @@ const emptyForm: TemplateFormData = {
 };
 
 const COMMON_LANGUAGE_CODES = [
+  'pt_BR',
   'en_US',
   'en_GB',
   'en',
@@ -107,7 +108,6 @@ const COMMON_LANGUAGE_CODES = [
   'fr_FR',
   'de',
   'it',
-  'pt_BR',
   'pt_PT',
   'nl',
   'pl',
