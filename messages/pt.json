@@ -1667,6 +1667,33 @@
       "owner": "Proprietário",
       "ownerHint": "Controle total da conta e do faturamento"
     },
+    "coexistence": {
+      "title": "Coexistência do WhatsApp Business",
+      "description": "Conecte o app WhatsApp Business à API oficial da Meta para usar os dois juntos no wacrm.",
+      "cardTitle": "Vincular o app WhatsApp Business",
+      "cardDescription": "A Meta abrirá o fluxo oficial de coexistência. A confirmação acontece no próprio app WhatsApp Business; o CRM não gera um QR code.",
+      "step1": "Use um número ativo no app WhatsApp Business (versão 2.24.17 ou mais recente).",
+      "step2": "Confirme a conexão no app quando a Meta solicitar e conclua o cadastro.",
+      "step3": "Mantenha o app aberto durante o processo de conexão.",
+      "syncNote": "As mensagens históricas e as mensagens enviadas pelo app WhatsApp Business ainda não aparecem na caixa de entrada do wacrm.",
+      "connectButton": "Conectar com a Meta",
+      "reconnectButton": "Reconectar com a Meta",
+      "connecting": "Conectando...",
+      "loading": "Carregando...",
+      "loadingSdk": "Carregando a conexão segura da Meta...",
+      "connectedTitle": "WhatsApp conectado",
+      "connectedDescription": "A conta foi vinculada à Cloud API. Você ainda pode usar o app WhatsApp Business.",
+      "errorTitle": "Não foi possível conectar",
+      "flowCancelled": "O fluxo foi cancelado ou não foi concluído. Tente novamente.",
+      "connectFailed": "Falha ao conectar o WhatsApp.",
+      "configLoadFailed": "Não foi possível carregar a configuração da Meta.",
+      "sdkUnavailable": "A conexão da Meta não está disponível. Verifique sua rede e tente novamente.",
+      "adminRequired": "Somente administradores do espaço de trabalho podem conectar o WhatsApp.",
+      "notConfiguredTitle": "Configuração necessária",
+      "notConfiguredDescription": "O administrador da instalação precisa configurar META_APP_ID, META_EMBEDDED_SIGNUP_CONFIG_ID e META_EMBEDDED_SIGNUP_APP_SECRET no servidor.",
+      "requirements": "A instalação precisa estar habilitada pela Meta como Tech Provider ou Solution Partner e ter os webhooks de coexistência configurados.",
+      "metaDocs": "Requisitos da Meta"
+    },
     "whatsapp": {
       "title": "Conexão com o WhatsApp",
       "description": "Conecte sua API do WhatsApp Business da Meta. Credenciais, webhook e etapas de configuração ficam todos aqui.",
@@ -1778,6 +1805,7 @@
       "security": "Login e segurança",
       "appearance": "Aparência",
       "whatsapp": "WhatsApp",
+      "whatsapp-coexistence": "Coexistência via app",
       "templates": "Modelos",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e tags",
@@ -2650,6 +2678,15 @@
       "templateNameRequired": "O nome do modelo é obrigatório",
       "templateMalformed": "O registro local do modelo está corrompido — use \"Sincronizar da Meta\" em Configurações para corrigi-lo antes de disparar.",
       "invalidPhoneFormat": "Formato de número de telefone inválido"
+    },
+    "whatsappCoexistence": {
+      "invalidSignup": "O fluxo de coexistência da Meta retornou dados inválidos.",
+      "adminRequired": "Somente administradores do espaço de trabalho podem conectar o WhatsApp.",
+      "notConfigured": "O Embedded Signup não está configurado neste servidor.",
+      "exchangeFailed": "A Meta não aceitou o código de conexão. Inicie o fluxo novamente.",
+      "numberLookupFailed": "Não foi possível localizar o número conectado na conta do WhatsApp Business.",
+      "numberNotUnique": "Não foi possível identificar um único número do WhatsApp Business para conectar.",
+      "numberNotReady": "A Meta ainda não confirmou que este número está conectado ao app WhatsApp Business e à Cloud API."
     },
     "whatsappConfig": {
       "fetchFailed": "Falha ao buscar a configuração",

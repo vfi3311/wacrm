@@ -1667,6 +1667,33 @@
       "owner": "소유자",
       "ownerHint": "계정과 결제에 대한 전체 권한"
     },
+    "coexistence": {
+      "title": "WhatsApp Business 공존",
+      "description": "공식 Meta API에 WhatsApp Business 앱을 연결해 wacrm과 함께 사용하세요.",
+      "cardTitle": "WhatsApp Business 앱 연결",
+      "cardDescription": "Meta 공식 공존 연결 절차가 열립니다. 연결 확인은 WhatsApp Business 앱에서 진행되며 CRM이 QR 코드를 생성하지 않습니다.",
+      "step1": "WhatsApp Business 앱(버전 2.24.17 이상)에서 사용 중인 번호를 준비하세요.",
+      "step2": "Meta 안내에 따라 앱에서 연결을 확인하고 가입을 완료하세요.",
+      "step3": "연결 과정이 진행되는 동안 앱을 열어 두세요.",
+      "syncNote": "이전 메시지와 WhatsApp Business 앱에서 보낸 메시지는 아직 wacrm 받은 편지함에 표시되지 않습니다.",
+      "connectButton": "Meta로 연결",
+      "reconnectButton": "Meta에 다시 연결",
+      "connecting": "연결 중...",
+      "loading": "불러오는 중...",
+      "loadingSdk": "Meta 보안 연결을 불러오는 중...",
+      "connectedTitle": "WhatsApp 연결됨",
+      "connectedDescription": "계정이 Cloud API에 연결되었습니다. WhatsApp Business 앱도 계속 사용할 수 있습니다.",
+      "errorTitle": "연결할 수 없습니다",
+      "flowCancelled": "연결 절차가 취소되었거나 완료되지 않았습니다. 다시 시도하세요.",
+      "connectFailed": "WhatsApp 연결에 실패했습니다.",
+      "configLoadFailed": "Meta 설정을 불러오지 못했습니다.",
+      "sdkUnavailable": "Meta 연결을 사용할 수 없습니다. 네트워크를 확인하고 다시 시도하세요.",
+      "adminRequired": "워크스페이스 관리자만 WhatsApp을 연결할 수 있습니다.",
+      "notConfiguredTitle": "설정 필요",
+      "notConfiguredDescription": "설치 관리자가 서버에 META_APP_ID, META_EMBEDDED_SIGNUP_CONFIG_ID, META_EMBEDDED_SIGNUP_APP_SECRET을 설정해야 합니다.",
+      "requirements": "Meta에서 Tech Provider 또는 Solution Partner로 승인하고 공존 웹훅을 설정해야 합니다.",
+      "metaDocs": "Meta 요구 사항"
+    },
     "whatsapp": {
       "title": "WhatsApp 연결",
       "description": "Meta WhatsApp 비즈니스 API를 연결하세요. 자격 증명, 웹훅, 설정 단계가 모두 여기 있습니다.",
@@ -1778,6 +1805,7 @@
       "security": "로그인 & 보안",
       "appearance": "화면 설정",
       "whatsapp": "WhatsApp",
+      "whatsapp-coexistence": "앱 공존",
       "templates": "템플릿",
       "quick-replies": "빠른 답장",
       "fields": "필드 & 태그",
@@ -2650,6 +2678,15 @@
       "templateNameRequired": "템플릿 이름은 필수입니다",
       "templateMalformed": "로컬 템플릿 데이터가 손상되었습니다 — 브로드캐스트 전에 설정에서 \"Meta에서 동기화\"를 실행해 복구하세요.",
       "invalidPhoneFormat": "전화번호 형식이 올바르지 않습니다"
+    },
+    "whatsappCoexistence": {
+      "invalidSignup": "Meta에서 잘못된 공존 가입 정보를 반환했습니다.",
+      "adminRequired": "워크스페이스 관리자만 WhatsApp을 연결할 수 있습니다.",
+      "notConfigured": "이 서버에 Embedded Signup이 설정되어 있지 않습니다.",
+      "exchangeFailed": "Meta가 연결 코드를 승인하지 않았습니다. 연결 절차를 다시 시작하세요.",
+      "numberLookupFailed": "WhatsApp Business 계정에서 연결된 전화번호를 찾지 못했습니다.",
+      "numberNotUnique": "연결할 WhatsApp Business 전화번호를 하나로 식별하지 못했습니다.",
+      "numberNotReady": "이 번호가 WhatsApp Business 앱과 Cloud API에 연결되었는지 Meta가 아직 확인하지 않았습니다."
     },
     "whatsappConfig": {
       "fetchFailed": "설정을 가져오지 못했습니다",
