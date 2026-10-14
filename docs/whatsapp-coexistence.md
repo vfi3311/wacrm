@@ -14,7 +14,19 @@ configuration using the current v4 experience, enable WhatsApp Business app
 user onboarding, and subscribe the Meta app to the `history`,
 `smb_app_state_sync`, and `smb_message_echoes` webhook fields.
 
-Set these server-side variables and restart/redeploy the application:
+Workspace owners and admins can configure these values under **Settings →
+WhatsApp coexistence**. Open Meta for Developers, select the app, and copy
+the App ID and App Secret from **App settings → Basic**. Copy the Embedded
+Signup configuration ID from **Facebook Login for Business → Configurations**.
+Meta does not expose the App Secret or Embedded Signup configuration ID for
+automatic retrieval through the Graph API, so these values must be copied
+from the dashboard.
+
+The App Secret is encrypted with the application's `ENCRYPTION_KEY` before it
+is persisted and is never returned to the browser. Existing plaintext values
+are encrypted when an administrator loads the settings page.
+
+The settings can alternatively be supplied as server-side variables:
 
 | Variable                          | Description                                                 |
 | --------------------------------- | ----------------------------------------------------------- |

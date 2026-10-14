@@ -24,6 +24,7 @@ import {
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption';
 import { resolveVerifyTokenForSave } from '@/lib/whatsapp/verify-token';
 import { getT } from '@/lib/i18n/translate';
+import { resolveMetaSignupSettings } from '@/lib/whatsapp/meta-signup-config';
 
 const t = getT('Api');
 const META_GRAPH_API_VERSION = 'v25.0';
@@ -349,7 +350,28 @@ export async function POST(request: Request) {
         );
       }
 
-      const configuredSignupId = process.env.META_EMBEDDED_SIGNUP_CONFIG_ID;
+      const { data: existingSignupConfig, error: signupConfigError } =
+        await supabase
+          .from('whatsapp_config')
+          .select(
+            'meta_app_id, meta_embedded_signup_config_id, meta_embedded_signup_app_secret'
+          )
+          .eq('account_id', accountId)
+          .maybeSingle();
+      if (signupConfigError) {
+        console.error(
+          '[whatsapp/config] Failed to load embedded-signup configuration:',
+          signupConfigError
+        );
+        return NextResponse.json(
+          { error: t('common.internalServerError') },
+          { status: 500 }
+        );
+      }
+
+      const { appId, configId: resolvedConfigId, appSecret } =
+        resolveMetaSignupSettings(existingSignupConfig ?? null);
+      const configuredSignupId = resolvedConfigId;
       if (
         signup_code.length > 4096 ||
         !isNumericMetaId(waba_id) ||
@@ -365,8 +387,6 @@ export async function POST(request: Request) {
         );
       }
 
-      const appId = process.env.META_APP_ID;
-      const appSecret = process.env.META_EMBEDDED_SIGNUP_APP_SECRET;
       if (!appId || !appSecret || !configuredSignupId) {
         console.error(
           '[whatsapp/config] Embedded Signup requires META_APP_ID, META_EMBEDDED_SIGNUP_CONFIG_ID, and META_EMBEDDED_SIGNUP_APP_SECRET'
@@ -614,19 +634,24 @@ export async function POST(request: Request) {
     // rather than null it out.
     const { data: existing } = await supabase
       .from('whatsapp_config')
-      .select('id, registered_at, phone_number_id, verify_token')
+      .select(
+        'id, registered_at, phone_number_id, verify_token, meta_app_id, meta_embedded_signup_config_id, meta_embedded_signup_app_secret'
+      )
       .eq('account_id', accountId)
       .maybeSingle();
 
     // Encrypt sensitive tokens before storing
     let encryptedAccessToken: string;
     let encryptedVerifyToken: string | null;
+    let encryptedMetaAppSecret: string | null;
     try {
       encryptedAccessToken = encrypt(access_token);
       encryptedVerifyToken = resolveVerifyTokenForSave(
         verify_token,
         existing?.verify_token ?? null
       );
+      const { appSecret } = resolveMetaSignupSettings(existing ?? null);
+      encryptedMetaAppSecret = appSecret ? encrypt(appSecret) : null;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unknown encryption error';
@@ -735,6 +760,13 @@ export async function POST(request: Request) {
       waba_id: waba_id || null,
       access_token: encryptedAccessToken,
       verify_token: encryptedVerifyToken,
+      meta_app_id: process.env.META_APP_ID || existing?.meta_app_id || null,
+      meta_embedded_signup_config_id:
+        process.env.META_EMBEDDED_SIGNUP_CONFIG_ID ||
+        existing?.meta_embedded_signup_config_id ||
+        null,
+      meta_embedded_signup_app_secret:
+        encryptedMetaAppSecret,
       status: registrationError ? 'disconnected' : 'connected',
       connected_at: registrationError ? null : new Date().toISOString(),
       registered_at: registrationError ? null : registeredAt,

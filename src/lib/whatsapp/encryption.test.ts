@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { decrypt, encrypt, isLegacyFormat } from "./encryption";
+import {
+  decrypt,
+  encrypt,
+  isEncryptedFormat,
+  isLegacyFormat,
+} from "./encryption";
 
 const KEY_HEX = process.env.ENCRYPTION_KEY!;
 
@@ -100,6 +105,12 @@ describe("encryption", () => {
   });
 
   describe("format detection", () => {
+    it("recognizes GCM and CBC ciphertext formats", () => {
+      expect(isEncryptedFormat(encrypt("anything"))).toBe(true);
+      expect(isEncryptedFormat(cbcEncryptLegacy("anything"))).toBe(true);
+      expect(isEncryptedFormat("plain-app-secret")).toBe(false);
+    });
+
     it("isLegacyFormat returns true for two-part CBC strings", () => {
       const legacy = cbcEncryptLegacy("anything");
       expect(isLegacyFormat(legacy)).toBe(true);

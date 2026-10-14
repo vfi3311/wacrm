@@ -20,6 +20,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 
 interface EmbeddedSignupConfig {
@@ -78,6 +80,13 @@ export function WhatsAppCoexistence() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
+  const [appId, setAppId] = useState('');
+  const [configId, setConfigId] = useState('');
+  const [appSecret, setAppSecret] = useState('');
+  const [hasMetaAppSecret, setHasMetaAppSecret] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [savingMetaConfig, setSavingMetaConfig] = useState(false);
+  const [loadingMetaConfig, setLoadingMetaConfig] = useState(false);
   const signupSession = useRef<SignupSession>({
     code: null,
     wabaId: null,
@@ -95,10 +104,15 @@ export function WhatsAppCoexistence() {
         });
         const data = (await response.json()) as EmbeddedSignupConfig & {
           error?: string;
+          hasAppSecret?: boolean;
         };
         if (!response.ok) throw new Error(data.error || t('configLoadFailed'));
         if (!cancelled) {
           setConfig(data);
+          setAppId(data.appId ?? '');
+          setConfigId(data.configId ?? '');
+          setAppSecret('');
+          setHasMetaAppSecret(Boolean(data.hasAppSecret));
           setConnected(data.connected);
         }
       } catch (caught) {
@@ -152,6 +166,102 @@ export function WhatsAppCoexistence() {
       finishingRef.current = false;
     }
   }, [config, t]);
+
+  const loadMetaConfig = useCallback(async () => {
+    try {
+      setLoadingMetaConfig(true);
+      setError('');
+      const response = await fetch('/api/whatsapp/coexistence', {
+        cache: 'no-store',
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        appId?: string | null;
+        configId?: string | null;
+        hasAppSecret?: boolean;
+      };
+      if (!response.ok) {
+        throw new Error(data.error || t('configLoadFailed'));
+      }
+      setAppId(data.appId ?? '');
+      setConfigId(data.configId ?? '');
+      setAppSecret('');
+      setHasMetaAppSecret(Boolean(data.hasAppSecret));
+      setShowSecret(false);
+      setConfig((previous) => ({
+        ...(previous ?? {
+          configured: Boolean(data.appId && data.configId),
+          connected: false,
+          appId: data.appId ?? null,
+          configId: data.configId ?? null,
+        }),
+        configured: Boolean(data.appId && data.configId),
+        appId: data.appId ?? null,
+        configId: data.configId ?? null,
+      }));
+    } catch (caught) {
+      console.error('Failed to load Meta embedded-signup configuration:', caught);
+      setError(caught instanceof Error ? caught.message : t('configLoadFailed'));
+    } finally {
+      setLoadingMetaConfig(false);
+    }
+  }, [t]);
+
+  const saveMetaConfig = useCallback(async () => {
+    const trimmedAppId = appId.trim();
+    const trimmedConfigId = configId.trim();
+    const trimmedAppSecret = appSecret.trim();
+
+    if (!trimmedAppId || !trimmedConfigId || (!trimmedAppSecret && !hasMetaAppSecret)) {
+      setError(t('metaConfigRequired'));
+      return;
+    }
+
+    try {
+      setSavingMetaConfig(true);
+      setError('');
+      const response = await fetch('/api/whatsapp/coexistence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meta_app_id: trimmedAppId,
+          meta_embedded_signup_config_id: trimmedConfigId,
+          meta_embedded_signup_app_secret: trimmedAppSecret,
+        }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        appId?: string;
+        configId?: string;
+        hasAppSecret?: boolean;
+      };
+      if (!response.ok) {
+        throw new Error(data.error || t('metaConfigSaveFailed'));
+      }
+
+      setConfig((previous) => ({
+        ...(previous ?? {
+          configured: true,
+          connected: false,
+          appId: null,
+          configId: null,
+        }),
+        configured: true,
+        appId: data.appId ?? trimmedAppId,
+        configId: data.configId ?? trimmedConfigId,
+      }));
+      setAppId(data.appId ?? trimmedAppId);
+      setConfigId(data.configId ?? trimmedConfigId);
+      setAppSecret('');
+      setHasMetaAppSecret(Boolean(data.hasAppSecret));
+      setShowSecret(false);
+    } catch (caught) {
+      console.error('Failed to save Meta embedded-signup configuration:', caught);
+      setError(caught instanceof Error ? caught.message : t('metaConfigSaveFailed'));
+    } finally {
+      setSavingMetaConfig(false);
+    }
+  }, [appId, appSecret, configId, hasMetaAppSecret, t]);
 
   const initializeSdk = useCallback(() => {
     if (!config?.appId || !window.FB) {
@@ -300,6 +410,105 @@ export function WhatsAppCoexistence() {
               <AlertTitle>{t('errorTitle')}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          ) : null}
+
+          {canEditSettings ? (
+            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="space-y-2">
+                <p className="text-muted-foreground text-sm">
+                  {t('metaSetupInstructions')}
+                </p>
+                <a
+                  href="https://developers.facebook.com/apps/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+                >
+                  {t('openMetaDevelopers')}
+                  <ExternalLink className="size-3" />
+                </a>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="meta-app-id">{t('metaAppIdLabel')}</Label>
+                <Input
+                  id="meta-app-id"
+                  value={appId}
+                  onChange={(event) => setAppId(event.target.value)}
+                  placeholder="123456789012345"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="meta-config-id">{t('metaConfigIdLabel')}</Label>
+                <Input
+                  id="meta-config-id"
+                  value={configId}
+                  onChange={(event) => setConfigId(event.target.value)}
+                  placeholder="123456789012345"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="meta-app-secret">{t('metaAppSecretLabel')}</Label>
+                <div className="relative">
+                  <Input
+                    id="meta-app-secret"
+                    type={showSecret ? 'text' : 'password'}
+                    value={appSecret}
+                    onChange={(event) => setAppSecret(event.target.value)}
+                    placeholder={
+                      hasMetaAppSecret
+                        ? t('metaAppSecretSavedPlaceholder')
+                        : t('metaAppSecretPlaceholder')
+                    }
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecret((current) => !current)}
+                    className="text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 text-xs underline"
+                  >
+                    {showSecret ? t('hideSecret') : t('showSecret')}
+                  </button>
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {t('metaAppSecretStorage')}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={loadMetaConfig}
+                  disabled={loadingMetaConfig || !canEditSettings}
+                >
+                  {loadingMetaConfig ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      {t('loading')}
+                    </>
+                  ) : (
+                    t('loadSettings')
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={saveMetaConfig}
+                  disabled={savingMetaConfig || !canEditSettings}
+                >
+                  {savingMetaConfig ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      {t('saving')}
+                    </>
+                  ) : (
+                    t('saveSettings')
+                  )}
+                </Button>
+              </div>
+            </div>
           ) : null}
 
           {loading ? (

@@ -111,3 +111,8 @@ export function decrypt(encryptedText: string): string {
 export function isLegacyFormat(encryptedText: string): boolean {
   return encryptedText.split(':').length === 2
 }
+
+export function isEncryptedFormat(value: string): boolean {
+  const parts = value.split(':').length
+  return parts === 2 || parts === 3
+}

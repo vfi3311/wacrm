@@ -298,6 +298,9 @@ export interface WhatsAppConfig {
   waba_id?: string;
   access_token: string;
   verify_token?: string;
+  meta_app_id?: string | null;
+  meta_embedded_signup_config_id?: string | null;
+  meta_embedded_signup_app_secret?: string | null;
   status: 'connected' | 'disconnected';
   connected_at?: string;
   /**
