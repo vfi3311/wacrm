@@ -54,14 +54,12 @@ interface MetaSdk {
       config_id: string;
       response_type: 'code';
       override_default_response_type: true;
-      extras: {
-        setup: Record<string, never>;
-        featureType: 'whatsapp_business_app_onboarding';
-        sessionInfoVersion: '3';
-      };
+      extras: Record<string, never>;
     }
   ): void;
 }
+
+const META_ID_PATTERN = /^\d+$/;
 
 declare global {
   interface Window {
@@ -200,8 +198,13 @@ export function WhatsAppCoexistence() {
         configId: data.configId ?? null,
       }));
     } catch (caught) {
-      console.error('Failed to load Meta embedded-signup configuration:', caught);
-      setError(caught instanceof Error ? caught.message : t('configLoadFailed'));
+      console.error(
+        'Failed to load Meta embedded-signup configuration:',
+        caught
+      );
+      setError(
+        caught instanceof Error ? caught.message : t('configLoadFailed')
+      );
     } finally {
       setLoadingMetaConfig(false);
     }
@@ -212,8 +215,19 @@ export function WhatsAppCoexistence() {
     const trimmedConfigId = configId.trim();
     const trimmedAppSecret = appSecret.trim();
 
-    if (!trimmedAppId || !trimmedConfigId || (!trimmedAppSecret && !hasMetaAppSecret)) {
+    if (
+      !trimmedAppId ||
+      !trimmedConfigId ||
+      (!trimmedAppSecret && !hasMetaAppSecret)
+    ) {
       setError(t('metaConfigRequired'));
+      return;
+    }
+    if (
+      !META_ID_PATTERN.test(trimmedAppId) ||
+      !META_ID_PATTERN.test(trimmedConfigId)
+    ) {
+      setError(t('metaIdsNumeric'));
       return;
     }
 
@@ -239,6 +253,11 @@ export function WhatsAppCoexistence() {
         throw new Error(data.error || t('metaConfigSaveFailed'));
       }
 
+      if (sdkInitializedRef.current && config?.appId !== trimmedAppId) {
+        window.location.reload();
+        return;
+      }
+
       setConfig((previous) => ({
         ...(previous ?? {
           configured: true,
@@ -256,12 +275,17 @@ export function WhatsAppCoexistence() {
       setHasMetaAppSecret(Boolean(data.hasAppSecret));
       setShowSecret(false);
     } catch (caught) {
-      console.error('Failed to save Meta embedded-signup configuration:', caught);
-      setError(caught instanceof Error ? caught.message : t('metaConfigSaveFailed'));
+      console.error(
+        'Failed to save Meta embedded-signup configuration:',
+        caught
+      );
+      setError(
+        caught instanceof Error ? caught.message : t('metaConfigSaveFailed')
+      );
     } finally {
       setSavingMetaConfig(false);
     }
-  }, [appId, appSecret, configId, hasMetaAppSecret, t]);
+  }, [appId, appSecret, config, configId, hasMetaAppSecret, t]);
 
   const initializeSdk = useCallback(() => {
     if (!config?.appId || !window.FB) {
@@ -341,7 +365,21 @@ export function WhatsAppCoexistence() {
   }, [canEditSettings, config, finishSignup, initializeSdk, t]);
 
   const launchSignup = () => {
-    if (!window.FB || !config?.configId) {
+    const configuredAppId = config?.appId?.trim();
+    const configuredConfigId = config?.configId?.trim();
+    if (!configuredAppId || !configuredConfigId) {
+      setError(t('metaConfigRequired'));
+      return;
+    }
+    if (
+      !META_ID_PATTERN.test(configuredAppId) ||
+      !META_ID_PATTERN.test(configuredConfigId)
+    ) {
+      setError(t('metaIdsNumeric'));
+      return;
+    }
+
+    if (!window.FB || !sdkReady) {
       setError(t('sdkUnavailable'));
       return;
     }
@@ -360,14 +398,10 @@ export function WhatsAppCoexistence() {
         void finishSignup();
       },
       {
-        config_id: config.configId,
+        config_id: configuredConfigId,
         response_type: 'code',
         override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: 'whatsapp_business_app_onboarding',
-          sessionInfoVersion: '3',
-        },
+        extras: {},
       }
     );
   };
@@ -413,7 +447,7 @@ export function WhatsAppCoexistence() {
           ) : null}
 
           {canEditSettings ? (
-            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+            <div className="border-border bg-muted/20 space-y-4 rounded-lg border p-4">
               <div className="space-y-2">
                 <p className="text-muted-foreground text-sm">
                   {t('metaSetupInstructions')}
@@ -425,6 +459,24 @@ export function WhatsAppCoexistence() {
                   className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
                 >
                   {t('openMetaDevelopers')}
+                  <ExternalLink className="size-3" />
+                </a>
+                <a
+                  href="https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business#create-a-configuration"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+                >
+                  {t('metaConfigGuide')}
+                  <ExternalLink className="size-3" />
+                </a>
+                <a
+                  href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/implementation#step-2-create-a-facebook-login-for-business-configuration"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+                >
+                  {t('metaEmbeddedSignupGuide')}
                   <ExternalLink className="size-3" />
                 </a>
               </div>
@@ -447,10 +499,15 @@ export function WhatsAppCoexistence() {
                   onChange={(event) => setConfigId(event.target.value)}
                   placeholder="123456789012345"
                 />
+                <p className="text-muted-foreground text-xs">
+                  {t('metaConfigIdHint')}
+                </p>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="meta-app-secret">{t('metaAppSecretLabel')}</Label>
+                <Label htmlFor="meta-app-secret">
+                  {t('metaAppSecretLabel')}
+                </Label>
                 <div className="relative">
                   <Input
                     id="meta-app-secret"
@@ -467,7 +524,7 @@ export function WhatsAppCoexistence() {
                   <button
                     type="button"
                     onClick={() => setShowSecret((current) => !current)}
-                    className="text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 text-xs underline"
+                    className="text-muted-foreground absolute top-1/2 right-3 -translate-y-1/2 text-xs underline"
                   >
                     {showSecret ? t('hideSecret') : t('showSecret')}
                   </button>
@@ -520,7 +577,13 @@ export function WhatsAppCoexistence() {
             <>
               <Button
                 onClick={launchSignup}
-                disabled={!canEditSettings || !sdkReady || connecting}
+                disabled={
+                  !canEditSettings ||
+                  !sdkReady ||
+                  connecting ||
+                  !META_ID_PATTERN.test(config.appId ?? '') ||
+                  !META_ID_PATTERN.test(config.configId ?? '')
+                }
               >
                 {connecting ? (
                   <Loader2 className="size-4 animate-spin" />

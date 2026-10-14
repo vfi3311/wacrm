@@ -2,25 +2,27 @@
 
 Workspace Settings includes an official Meta Embedded Signup flow for
 connecting an existing WhatsApp Business app number to the WhatsApp Cloud
-API. Meta presents the approval and number-verification steps; wacrm does
-not generate a QR code or use an unofficial WhatsApp Web client.
+API. The **Meta Business Portfolio** settings menu opens the flow where
+the user selects a portfolio and follows Meta's number-verification steps.
+wacrm does not generate a QR code or use an unofficial WhatsApp Web client.
 
 ## Meta setup
 
 This feature requires the installation's Meta app to be approved as a Tech
 Provider or Solution Partner and configured for WhatsApp Business app user
-onboarding. Create a Facebook Login for Business Embedded Signup
-configuration using the current v4 experience, enable WhatsApp Business app
-user onboarding, and subscribe the Meta app to the `history`,
+onboarding. In the Meta App Dashboard, open **Facebook Login for Business →
+Configurations**, create a **new** configuration, choose **Embedded Signup**,
+and select **WhatsApp Business app user onboarding**. Selecting products in a
+new configuration enables the v4 experience; its SDK call uses an empty
+`extras` object. Add the CRM's HTTPS domain to both **Allowed domains** and
+**Valid OAuth redirect URIs**. Subscribe the Meta app to the `history`,
 `smb_app_state_sync`, and `smb_message_echoes` webhook fields.
 
 Workspace owners and admins can configure these values under **Settings →
 WhatsApp coexistence**. Open Meta for Developers, select the app, and copy
-the App ID and App Secret from **App settings → Basic**. Copy the Embedded
-Signup configuration ID from **Facebook Login for Business → Configurations**.
-Meta does not expose the App Secret or Embedded Signup configuration ID for
-automatic retrieval through the Graph API, so these values must be copied
-from the dashboard.
+the App ID and App Secret from **App settings → Basic**. Copy the ID of the
+new v4 configuration from **Facebook Login for Business → Configurations**.
+Use the same Meta app for the App ID, App Secret, and configuration.
 
 The App Secret is encrypted with the application's `ENCRYPTION_KEY` before it
 is persisted and is never returned to the browser. Existing plaintext values
@@ -47,3 +49,8 @@ yet import the WhatsApp Business app's historical messages or contacts, and
 messages sent from the Business app are not yet mirrored into the inbox.
 Those behaviors require additional handling for Meta's `history`,
 `smb_app_state_sync`, and `smb_message_echoes` webhook payloads.
+
+For coexistence onboarding, Meta currently presents a verification code
+that the business enters in WhatsApp Business. It is not a QR-code pairing
+flow, and the app must not generate or display a homemade QR code as a
+substitute for Meta's verification.

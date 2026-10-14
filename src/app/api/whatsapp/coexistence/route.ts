@@ -23,10 +23,7 @@ function isMissingMetaSettingsColumn(error: {
   );
 }
 
-function databaseErrorResponse(error: {
-  code?: string;
-  message?: string;
-}) {
+function databaseErrorResponse(error: { code?: string; message?: string }) {
   if (isMissingMetaSettingsColumn(error)) {
     return NextResponse.json(
       { error: t('whatsappCoexistence.migrationRequired') },
@@ -186,7 +183,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isAccountRole(profile.account_role) || !canEditSettings(profile.account_role)) {
+    if (
+      !isAccountRole(profile.account_role) ||
+      !canEditSettings(profile.account_role)
+    ) {
       return NextResponse.json(
         { error: t('whatsappCoexistence.adminRequired') },
         { status: 403 }
@@ -194,7 +194,8 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as Record<string, unknown>;
-    const appId = typeof body.meta_app_id === 'string' ? body.meta_app_id.trim() : '';
+    const appId =
+      typeof body.meta_app_id === 'string' ? body.meta_app_id.trim() : '';
     const configId =
       typeof body.meta_embedded_signup_config_id === 'string'
         ? body.meta_embedded_signup_config_id.trim()
@@ -207,6 +208,12 @@ export async function POST(request: Request) {
     if (!appId || !configId) {
       return NextResponse.json(
         { error: t('whatsappCoexistence.metaConfigRequired') },
+        { status: 400 }
+      );
+    }
+    if (!/^\d+$/.test(appId) || !/^\d+$/.test(configId)) {
+      return NextResponse.json(
+        { error: t('whatsappCoexistence.metaIdsNumeric') },
         { status: 400 }
       );
     }
@@ -233,8 +240,7 @@ export async function POST(request: Request) {
     }
 
     const appSecretToStore =
-      appSecret ||
-      resolveMetaSignupSettings(existingConfig).appSecret;
+      appSecret || resolveMetaSignupSettings(existingConfig).appSecret;
     if (!appSecretToStore) {
       return NextResponse.json(
         { error: t('whatsappCoexistence.metaConfigRequired') },

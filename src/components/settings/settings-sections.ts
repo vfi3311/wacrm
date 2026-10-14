@@ -1,11 +1,11 @@
 import {
   Coins,
+  Building2,
   FileText,
   KeyRound,
   LayoutGrid,
   Palette,
   PlugZap,
-  QrCode,
   Shield,
   Tags,
   User,
@@ -57,8 +57,8 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
   'whatsapp-coexistence': {
     id: 'whatsapp-coexistence',
-    label: 'WhatsApp coexistence',
-    icon: QrCode,
+    label: 'Meta Business Portfolio',
+    icon: Building2,
     group: 'workspace',
   },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
