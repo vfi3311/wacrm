@@ -17,12 +17,18 @@ new configuration enables the v4 experience; its SDK call uses an empty
 `extras` object. Add the CRM's HTTPS domain to both **Allowed domains** and
 **Valid OAuth redirect URIs**. Subscribe the Meta app to the `history`,
 `smb_app_state_sync`, and `smb_message_echoes` webhook fields.
+The Facebook JavaScript SDK login must be launched from HTTPS. HTTP is
+supported only for localhost while the Meta app is in development mode.
+When testing on a non-localhost domain, configure TLS and open the CRM using
+its `https://` URL before starting signup.
 
 Workspace owners and admins can configure these values under **Settings →
 WhatsApp coexistence**. Open Meta for Developers, select the app, and copy
 the App ID and App Secret from **App settings → Basic**. Copy the ID of the
 new v4 configuration from **Facebook Login for Business → Configurations**.
 Use the same Meta app for the App ID, App Secret, and configuration.
+The configuration ID is issued separately after you create the configuration;
+it is not the Meta App ID or Business Portfolio ID.
 
 The App Secret is encrypted with the application's `ENCRYPTION_KEY` before it
 is persisted and is never returned to the browser. Existing plaintext values

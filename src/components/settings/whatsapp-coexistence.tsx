@@ -78,6 +78,7 @@ export function WhatsAppCoexistence() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
+  const [httpsUrl, setHttpsUrl] = useState<string | null>(null);
   const [appId, setAppId] = useState('');
   const [configId, setConfigId] = useState('');
   const [appSecret, setAppSecret] = useState('');
@@ -230,6 +231,10 @@ export function WhatsAppCoexistence() {
       setError(t('metaIdsNumeric'));
       return;
     }
+    if (trimmedAppId === trimmedConfigId) {
+      setError(t('metaConfigIdIsAppId'));
+      return;
+    }
 
     try {
       setSavingMetaConfig(true);
@@ -365,6 +370,19 @@ export function WhatsAppCoexistence() {
   }, [canEditSettings, config, finishSignup, initializeSdk, t]);
 
   const launchSignup = () => {
+    const { hostname, protocol } = window.location;
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '::1' ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname);
+    if (protocol !== 'https:' && !isLocalhost) {
+      const secureUrl = new URL(window.location.href);
+      secureUrl.protocol = 'https:';
+      setHttpsUrl(secureUrl.toString());
+      setError(t('httpsRequired'));
+      return;
+    }
+
     const configuredAppId = config?.appId?.trim();
     const configuredConfigId = config?.configId?.trim();
     if (!configuredAppId || !configuredConfigId) {
@@ -378,6 +396,10 @@ export function WhatsAppCoexistence() {
       setError(t('metaIdsNumeric'));
       return;
     }
+    if (configuredAppId === configuredConfigId) {
+      setError(t('metaConfigIdIsAppId'));
+      return;
+    }
 
     if (!window.FB || !sdkReady) {
       setError(t('sdkUnavailable'));
@@ -386,6 +408,7 @@ export function WhatsAppCoexistence() {
     signupSession.current = { code: null, wabaId: null, phoneNumberId: null };
     finishingRef.current = false;
     setError('');
+    setHttpsUrl(null);
     setConnected(false);
     window.FB.login(
       (response) => {
@@ -442,7 +465,14 @@ export function WhatsAppCoexistence() {
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
               <AlertTitle>{t('errorTitle')}</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                {error}{' '}
+                {httpsUrl ? (
+                  <a className="underline" href={httpsUrl}>
+                    {t('openHttps')}
+                  </a>
+                ) : null}
+              </AlertDescription>
             </Alert>
           ) : null}
 

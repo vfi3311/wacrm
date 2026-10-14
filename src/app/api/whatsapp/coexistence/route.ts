@@ -217,6 +217,12 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (appId === configId) {
+      return NextResponse.json(
+        { error: t('whatsappCoexistence.metaConfigIdIsAppId') },
+        { status: 400 }
+      );
+    }
 
     const { data: existingConfig, error: lookupError } = await supabase
       .from('whatsapp_config')
