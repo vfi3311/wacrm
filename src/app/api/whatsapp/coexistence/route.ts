@@ -10,6 +10,35 @@ import {
 
 const t = getT('Api');
 
+function isMissingMetaSettingsColumn(error: {
+  code?: string;
+  message?: string;
+}) {
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    (error.message?.includes('meta_embedded_signup_app_secret') ?? false) ||
+    (error.message?.includes('meta_embedded_signup_config_id') ?? false) ||
+    (error.message?.includes('meta_app_id') ?? false)
+  );
+}
+
+function databaseErrorResponse(error: {
+  code?: string;
+  message?: string;
+}) {
+  if (isMissingMetaSettingsColumn(error)) {
+    return NextResponse.json(
+      { error: t('whatsappCoexistence.migrationRequired') },
+      { status: 503 }
+    );
+  }
+  return NextResponse.json(
+    { error: t('common.internalServerError') },
+    { status: 500 }
+  );
+}
+
 /**
  * Return only the public identifiers needed by Meta's browser SDK.
  * The app secret is intentionally never exposed to the client.
@@ -193,10 +222,7 @@ export async function POST(request: Request) {
         '[whatsapp/coexistence] Failed to load whatsapp_config row:',
         lookupError
       );
-      return NextResponse.json(
-        { error: t('common.internalServerError') },
-        { status: 500 }
-      );
+      return databaseErrorResponse(lookupError);
     }
 
     if (!existingConfig) {
@@ -216,12 +242,26 @@ export async function POST(request: Request) {
       );
     }
 
+    let encryptedAppSecret: string;
+    try {
+      encryptedAppSecret = encrypt(appSecretToStore);
+    } catch (error) {
+      console.error(
+        '[whatsapp/coexistence] Failed to encrypt the Meta App Secret:',
+        error instanceof Error ? error.message : error
+      );
+      return NextResponse.json(
+        { error: t('whatsappConfig.encryptFailed') },
+        { status: 500 }
+      );
+    }
+
     const { error: updateError } = await supabase
       .from('whatsapp_config')
       .update({
         meta_app_id: appId,
         meta_embedded_signup_config_id: configId,
-        meta_embedded_signup_app_secret: encrypt(appSecretToStore),
+        meta_embedded_signup_app_secret: encryptedAppSecret,
         updated_at: new Date().toISOString(),
       })
       .eq('account_id', profile.account_id);
@@ -231,10 +271,7 @@ export async function POST(request: Request) {
         '[whatsapp/coexistence] Failed to save Meta config:',
         updateError
       );
-      return NextResponse.json(
-        { error: t('common.internalServerError') },
-        { status: 500 }
-      );
+      return databaseErrorResponse(updateError);
     }
 
     applyMetaSignupSettingsToProcessEnv({

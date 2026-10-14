@@ -2699,6 +2699,7 @@
       "invalidSignup": "O fluxo de coexistência da Meta retornou dados inválidos.",
       "adminRequired": "Somente administradores do espaço de trabalho podem conectar o WhatsApp.",
       "notConfigured": "O Embedded Signup não está configurado neste servidor.",
+      "migrationRequired": "O banco de dados não possui as colunas de configuração da Meta. Aplique a migration Supabase 047_whatsapp_embedded_signup_settings.sql e tente novamente.",
       "exchangeFailed": "A Meta não aceitou o código de conexão. Inicie o fluxo novamente.",
       "numberLookupFailed": "Não foi possível localizar o número conectado na conta do WhatsApp Business.",
       "numberNotUnique": "Não foi possível identificar um único número do WhatsApp Business para conectar.",

@@ -2699,6 +2699,7 @@
       "invalidSignup": "Meta returned invalid coexistence signup data.",
       "adminRequired": "Only workspace administrators can connect WhatsApp.",
       "notConfigured": "Embedded Signup is not configured on this server.",
+      "migrationRequired": "The database is missing the Meta settings columns. Apply Supabase migration 047_whatsapp_embedded_signup_settings.sql, then try again.",
       "metaConfigRequired": "Meta App ID, Embedded Signup config ID, and App Secret are required.",
       "noConfigRow": "Configure the WhatsApp connection first before saving the Meta embedded-signup values.",
       "exchangeFailed": "Meta did not accept the connection code. Start the flow again.",
