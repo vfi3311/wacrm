@@ -15,7 +15,9 @@ const h = vi.hoisted(() => ({
     /** Row `lookupInternalIdByMetaId` resolves for a `context.id`. */
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
+    conversationUpdates: [] as Record<string, unknown>[],
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
+    historySyncUpdates: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
@@ -74,6 +76,19 @@ vi.mock('@supabase/supabase-js', () => ({
                   error: null,
                 }),
             }),
+            update: (patch: Record<string, unknown>) => {
+              h.state.historySyncUpdates.push(patch)
+              return {
+                eq: () => ({
+                  lt: () => ({
+                    neq: () => ({
+                      neq: () => Promise.resolve({ error: null }),
+                    }),
+                  }),
+                  neq: () => Promise.resolve({ error: null }),
+                }),
+              }
+            },
           }
         case 'conversations':
           // findOrCreateConversation: select().eq().eq().order().limit()
@@ -91,6 +106,10 @@ vi.mock('@supabase/supabase-js', () => ({
                 }),
               }),
             }),
+            update: (patch: Record<string, unknown>) => {
+              h.state.conversationUpdates.push(patch)
+              return { eq: () => Promise.resolve({ error: null }) }
+            },
           }
         case 'broadcast_recipients':
           // Two chains land here:
@@ -198,7 +217,16 @@ vi.mock('@supabase/supabase-js', () => ({
             // Status webhook mirror (#535): update(...).eq('message_id', ...)
             update: (patch: Record<string, unknown>) => {
               h.state.messageUpdates.push(patch)
-              return { eq: () => Promise.resolve({ error: null }) }
+              return {
+                eq: () => ({
+                  eq: () => ({
+                    eq: () =>
+                      Promise.resolve({ data: [{ id: 'msg-1' }], error: null }),
+                  }),
+                  then: (resolve: (value: { error: null }) => unknown) =>
+                    resolve({ error: null }),
+                }),
+              }
             },
             // Idempotent insert: upsert(...).select('id')
             upsert: (row: Record<string, unknown>, options: unknown) => {
@@ -298,6 +326,21 @@ const TEXT_MESSAGE = {
   text: { body: 'hello' },
 }
 
+async function runFieldWebhook(
+  field: string,
+  value: Record<string, unknown>,
+) {
+  const res = await POST({
+    text: async () =>
+      JSON.stringify({
+        entry: [{ changes: [{ field, value }] }],
+      }),
+    headers: { get: () => 'sha256=stub' },
+  } as unknown as Request)
+  for (const cb of h.state.afterCallbacks) await cb()
+  return res
+}
+
 const LEGACY_CONTACTS = [{ wa_id: '15551230000', profile: { name: 'Ada' } }]
 
 function inboundRequest(
@@ -367,7 +410,9 @@ beforeEach(() => {
   h.state.priorCustomerMsgCount = 0
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
+  h.state.conversationUpdates = []
   h.state.upsertCalls = []
+  h.state.historySyncUpdates = []
   h.state.rpcCalls = []
   h.state.afterCallbacks = []
   h.state.automationStarted = 0
@@ -439,6 +484,80 @@ describe('inbound webhook: idempotent insert (#367)', () => {
     expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
     expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
     expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('WhatsApp Business app coexistence messages', () => {
+  it('imports historical messages without marking them unread or dispatching automations', async () => {
+    await runFieldWebhook('history', {
+      metadata: {
+        phone_number_id: 'pn-1',
+        display_phone_number: '15550000000',
+      },
+      history: [
+        {
+          metadata: { phase: 2, chunk_order: 1, progress: 100 },
+          threads: [
+            {
+              id: '15551230000',
+              messages: [
+                {
+                  id: 'wamid.HISTORY',
+                  from: '15551230000',
+                  timestamp: '1700000000',
+                  type: 'text',
+                  text: { body: 'Older message' },
+                  history_context: { status: 'READ' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      sender_type: 'customer',
+      status: 'read',
+      content_text: 'Older message',
+    })
+    expect(h.state.historySyncUpdates.at(-1)).toMatchObject({
+      smb_history_sync_status: 'completed',
+      smb_history_sync_progress: 100,
+    })
+    expect(h.state.rpcCalls).toHaveLength(0)
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
+  })
+
+  it('mirrors messages sent from the Business app as agent messages', async () => {
+    await runFieldWebhook('smb_message_echoes', {
+      metadata: {
+        phone_number_id: 'pn-1',
+        display_phone_number: '15550000000',
+      },
+      message_echoes: [
+        {
+          id: 'wamid.APP_ECHO',
+          from: '15550000000',
+          to: '15551230000',
+          timestamp: '1700000000',
+          type: 'text',
+          text: { body: 'Sent from WhatsApp Business' },
+        },
+      ],
+    })
+
+    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      sender_type: 'agent',
+      status: 'sent',
+      content_text: 'Sent from WhatsApp Business',
+    })
+    expect(h.state.rpcCalls).toHaveLength(0)
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
     expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
   })
 })

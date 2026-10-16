@@ -21,6 +21,10 @@ export interface MetaSendResult {
   messageId: string
 }
 
+export interface MetaSMBAppDataResult {
+  requestId: string
+}
+
 export interface MetaPhoneInfo {
   id: string
   display_phone_number: string
@@ -134,6 +138,45 @@ export async function verifyPhoneNumber(
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
   return response.json()
+}
+
+export interface StartSMBAppDataSyncArgs {
+  phoneNumberId: string
+  accessToken: string
+  syncType: 'history' | 'smb_app_state_sync'
+}
+
+/**
+ * Ask Meta to synchronize a WhatsApp Business app history or contact state.
+ * Meta accepts each sync type only once for a newly onboarded coexistence
+ * number, so callers must persist the returned request id and avoid retries.
+ */
+export async function startSMBAppDataSync(
+  args: StartSMBAppDataSyncArgs
+): Promise<MetaSMBAppDataResult> {
+  const { phoneNumberId, accessToken, syncType } = args
+  const response = await fetch(`${META_API_BASE}/${phoneNumberId}/smb_app_data`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      sync_type: syncType,
+    }),
+  })
+
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+
+  const data = (await response.json()) as { request_id?: unknown }
+  if (typeof data.request_id !== 'string' || !data.request_id) {
+    throw new Error('Meta accepted the sync request without a request ID')
+  }
+
+  return { requestId: data.request_id }
 }
 
 // ============================================================

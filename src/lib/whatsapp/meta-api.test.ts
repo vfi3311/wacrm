@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   INTERACTIVE_LIMITS,
+  startSMBAppDataSync,
   sendInteractiveButtons,
   sendInteractiveList,
 } from "./meta-api";
@@ -20,6 +21,58 @@ const BASE_ARGS = {
   to: "1234567890",
   bodyText: "Body text",
 } as const;
+
+describe("startSMBAppDataSync", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("requests the requested one-time sync and returns Meta's request id", async () => {
+    const captured: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        captured.push({ url, init });
+        return new Response(JSON.stringify({ request_id: "sync-123" }), {
+          status: 200,
+        });
+      }),
+    );
+
+    await expect(
+      startSMBAppDataSync({
+        phoneNumberId: "test-phone",
+        accessToken: "test-token",
+        syncType: "history",
+      }),
+    ).resolves.toEqual({ requestId: "sync-123" });
+    expect(captured[0].url).toContain("/test-phone/smb_app_data");
+    expect(captured[0].init.method).toBe("POST");
+    expect(captured[0].init.headers).toMatchObject({
+      Authorization: "Bearer test-token",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(captured[0].init.body))).toEqual({
+      messaging_product: "whatsapp",
+      sync_type: "history",
+    });
+  });
+
+  it("rejects a successful response without Meta's request id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
+    );
+
+    await expect(
+      startSMBAppDataSync({
+        phoneNumberId: "test-phone",
+        accessToken: "test-token",
+        syncType: "history",
+      }),
+    ).rejects.toThrow(/request ID/);
+  });
+});
 
 describe("sendInteractiveButtons — validation", () => {
   beforeEach(() => {

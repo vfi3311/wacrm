@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
+  RefreshCw,
   Smartphone,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -29,6 +30,20 @@ interface EmbeddedSignupConfig {
   connected: boolean;
   appId: string | null;
   configId: string | null;
+  historySync?: HistorySyncState | null;
+}
+
+interface HistorySyncState {
+  state:
+    | 'not_started'
+    | 'requesting'
+    | 'requested'
+    | 'syncing'
+    | 'completed'
+    | 'declined'
+    | 'failed';
+  progress: number;
+  requestId: string | null;
 }
 
 interface SignupSession {
@@ -77,6 +92,9 @@ export function WhatsAppCoexistence() {
   const [sdkFailed, setSdkFailed] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [historySync, setHistorySync] = useState<HistorySyncState | null>(null);
+  const [startingHistorySync, setStartingHistorySync] = useState(false);
+  const [historySyncError, setHistorySyncError] = useState('');
   const [error, setError] = useState('');
   const [httpsUrl, setHttpsUrl] = useState<string | null>(null);
   const [appId, setAppId] = useState('');
@@ -113,6 +131,7 @@ export function WhatsAppCoexistence() {
           setAppSecret('');
           setHasMetaAppSecret(Boolean(data.hasAppSecret));
           setConnected(data.connected);
+          setHistorySync(data.historySync ?? null);
         }
       } catch (caught) {
         console.error(
@@ -128,6 +147,57 @@ export function WhatsAppCoexistence() {
       cancelled = true;
     };
   }, [t]);
+
+  const refreshHistorySync = useCallback(async () => {
+    const response = await fetch('/api/whatsapp/coexistence', {
+      cache: 'no-store',
+    });
+    const data = (await response.json()) as EmbeddedSignupConfig & {
+      error?: string;
+    };
+    if (!response.ok) throw new Error(data.error || t('configLoadFailed'));
+    setHistorySync(data.historySync ?? null);
+  }, [t]);
+
+  useEffect(() => {
+    if (
+      !connected ||
+      !historySync ||
+      !['requesting', 'requested', 'syncing'].includes(historySync.state)
+    ) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshHistorySync().catch((caught) => {
+        console.error('Failed to refresh WhatsApp history sync status:', caught);
+      });
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [connected, historySync, refreshHistorySync]);
+
+  const startHistorySync = async () => {
+    try {
+      setStartingHistorySync(true);
+      setHistorySyncError('');
+      const response = await fetch('/api/whatsapp/coexistence/history-sync', {
+        method: 'POST',
+      });
+      const data = (await response.json()) as {
+        historySync?: HistorySyncState;
+        error?: string;
+      };
+      if (data.historySync) setHistorySync(data.historySync);
+      if (!response.ok) throw new Error(data.error || t('historySyncFailed'));
+    } catch (caught) {
+      console.error('Failed to start WhatsApp history sync:', caught);
+      setHistorySyncError(
+        caught instanceof Error ? caught.message : t('historySyncFailed')
+      );
+    } finally {
+      setStartingHistorySync(false);
+    }
+  };
 
   const finishSignup = useCallback(async () => {
     const session = signupSession.current;
@@ -157,6 +227,9 @@ export function WhatsAppCoexistence() {
         throw new Error(data.error || t('connectFailed'));
       }
       setConnected(true);
+      void refreshHistorySync().catch((caught) => {
+        console.error('Failed to load WhatsApp history sync status:', caught);
+      });
     } catch (caught) {
       console.error('WhatsApp coexistence signup failed:', caught);
       setError(caught instanceof Error ? caught.message : t('connectFailed'));
@@ -164,7 +237,7 @@ export function WhatsAppCoexistence() {
       setConnecting(false);
       finishingRef.current = false;
     }
-  }, [config, t]);
+  }, [config, refreshHistorySync, t]);
 
   const loadMetaConfig = useCallback(async () => {
     try {
@@ -455,11 +528,67 @@ export function WhatsAppCoexistence() {
           <p className="text-muted-foreground text-sm">{t('syncNote')}</p>
 
           {connected ? (
-            <Alert>
-              <CheckCircle2 className="size-4" />
-              <AlertTitle>{t('connectedTitle')}</AlertTitle>
-              <AlertDescription>{t('connectedDescription')}</AlertDescription>
-            </Alert>
+            <>
+              <Alert>
+                <CheckCircle2 className="size-4" />
+                <AlertTitle>{t('connectedTitle')}</AlertTitle>
+                <AlertDescription>
+                  {t('connectedDescription')}
+                </AlertDescription>
+              </Alert>
+              <div className="border-border bg-muted/20 space-y-3 rounded-lg border p-4">
+                <div>
+                  <h3 className="text-foreground text-sm font-semibold">
+                    {t('historySyncTitle')}
+                  </h3>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {t('historySyncDescription')}
+                  </p>
+                </div>
+                {historySync ? (
+                  <p className="text-muted-foreground text-sm" role="status">
+                    {historySync.state === 'completed'
+                      ? t('historySyncCompleted')
+                      : historySync.state === 'declined'
+                        ? t('historySyncDeclined')
+                        : historySync.state === 'failed'
+                          ? t('historySyncFailed')
+                          : historySync.state === 'syncing'
+                            ? t('historySyncProgress', {
+                                progress: historySync.progress,
+                              })
+                            : historySync.state === 'requested'
+                              ? t('historySyncRequested')
+                              : historySync.state === 'requesting'
+                                ? t('historySyncStarting')
+                                : t('historySyncReady')}
+                  </p>
+                ) : null}
+                {historySyncError ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {historySyncError}
+                  </p>
+                ) : null}
+                {canEditSettings &&
+                historySync?.state === 'not_started' ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={startHistorySync}
+                    disabled={startingHistorySync}
+                  >
+                    {startingHistorySync ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-4" />
+                    )}
+                    {startingHistorySync
+                      ? t('historySyncStarting')
+                      : t('historySyncButton')}
+                  </Button>
+                ) : null}
+              </div>
+            </>
           ) : null}
           {error ? (
             <Alert variant="destructive">

@@ -47,14 +47,31 @@ server. The resulting access token is encrypted and stored using the
 existing WhatsApp configuration flow; it is never returned to the browser.
 Only workspace owners and admins can start a connection.
 
-## Current scope
+## Synchronizing messages
 
 The flow connects the selected coexistence number and subscribes its WABA to
-the app as part of the existing WhatsApp setup. The current inbox does not
-yet import the WhatsApp Business app's historical messages or contacts, and
-messages sent from the Business app are not yet mirrored into the inbox.
-Those behaviors require additional handling for Meta's `history`,
-`smb_app_state_sync`, and `smb_message_echoes` webhook payloads.
+the app as part of the existing WhatsApp setup. Subscribe the Meta app to
+`history`, `smb_app_state_sync`, and `smb_message_echoes` so it can import the
+historical chat messages and receive future Business app message echoes.
+
+After connecting, an owner or admin must select **Import message history**
+under **Settings → WhatsApp coexistence**. Meta only accepts this request once
+and within 24 hours of onboarding; keep the WhatsApp Business app open while
+the asynchronous import runs. The inbox displays the received progress. Meta
+can provide up to 180 days of one-to-one history; group conversations are not
+included. If the business declined history sharing in WhatsApp Business, new
+messages sent from the app are still mirrored. The sync request ID is retained
+in `whatsapp_config` for support.
+
+Historical imports and app echoes use the existing conversation and message
+records, so retries are idempotent. Imported messages do not increment unread
+counts or trigger flows, automations, AI replies, or inbound-message webhooks.
+Cloud API media IDs supplied for a history placeholder replace that placeholder
+when Meta later sends the corresponding media details.
+
+Apply `supabase/migrations/048_whatsapp_history_sync.sql` before deploying this
+feature. It adds the one-time request state and progress fields to
+`whatsapp_config`.
 
 For coexistence onboarding, Meta currently presents a verification code
 that the business enters in WhatsApp Business. It is not a QR-code pairing

@@ -19,7 +19,8 @@ function isMissingMetaSettingsColumn(error: {
     error.code === 'PGRST204' ||
     (error.message?.includes('meta_embedded_signup_app_secret') ?? false) ||
     (error.message?.includes('meta_embedded_signup_config_id') ?? false) ||
-    (error.message?.includes('meta_app_id') ?? false)
+    (error.message?.includes('meta_app_id') ?? false) ||
+    (error.message?.includes('smb_history_sync_') ?? false)
   );
 }
 
@@ -80,7 +81,7 @@ export async function GET() {
     const { data: whatsappConfig, error: configError } = await supabase
       .from('whatsapp_config')
       .select(
-        'status, meta_app_id, meta_embedded_signup_config_id, meta_embedded_signup_app_secret'
+        'status, meta_app_id, meta_embedded_signup_config_id, meta_embedded_signup_app_secret, smb_history_sync_status, smb_history_sync_progress, smb_history_sync_request_id'
       )
       .eq('account_id', profile.account_id)
       .maybeSingle();
@@ -89,10 +90,7 @@ export async function GET() {
         '[whatsapp/coexistence] Failed to load WhatsApp status:',
         configError
       );
-      return NextResponse.json(
-        { error: t('common.internalServerError') },
-        { status: 500 }
-      );
+      return databaseErrorResponse(configError);
     }
 
     const storedAppSecret =
@@ -131,6 +129,13 @@ export async function GET() {
       appId: resolvedSettings.appId || null,
       configId: resolvedSettings.configId || null,
       hasAppSecret: Boolean(resolvedSettings.appSecret),
+      historySync: whatsappConfig
+        ? {
+            state: whatsappConfig.smb_history_sync_status,
+            progress: whatsappConfig.smb_history_sync_progress,
+            requestId: whatsappConfig.smb_history_sync_request_id,
+          }
+        : null,
     });
   } catch (error) {
     console.error(

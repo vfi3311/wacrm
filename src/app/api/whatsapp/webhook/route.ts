@@ -11,6 +11,12 @@ import {
   type WaContactPayload,
   type WaIdentity,
 } from '@/lib/whatsapp/wa-identity'
+import {
+  normalizeCoexistenceMessageStatus,
+  resolveCoexistenceMessageDirection,
+  type CoexistenceMessageStatus,
+  type CoexistenceSenderType,
+} from '@/lib/whatsapp/coexistence-history'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -88,6 +94,21 @@ interface WhatsAppMessage {
   button?: { text?: string; payload?: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  to?: string
+  history_context?: { status?: string }
+}
+
+interface WhatsAppHistoryChunk {
+  metadata?: {
+    phase?: number
+    chunk_order?: number
+    progress?: number
+  }
+  threads?: Array<{
+    id?: string
+    messages?: WhatsAppMessage[]
+  }>
+  errors?: Array<{ code?: number; title?: string; message?: string }>
 }
 
 /** One entry of a failed status's `errors` array, as Meta sends it. */
@@ -116,6 +137,8 @@ interface WhatsAppWebhookEntry {
         parent_user_id?: string
       }>
       messages?: WhatsAppMessage[]
+      message_echoes?: WhatsAppMessage[]
+      history?: WhatsAppHistoryChunk[]
       statuses?: Array<{
         id: string
         status: string
@@ -290,17 +313,32 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const value = change.value
 
-      // Handle status updates
       if (value.statuses) {
         for (const status of value.statuses) {
           await handleStatusUpdate(status)
         }
       }
 
-      // Handle incoming messages
-      if (!value.messages || !value.contacts) continue
+      const isHistory = change.field === 'history'
+      const isAppEcho = change.field === 'smb_message_echoes'
+      const messages = value.messages ?? []
+      const echoes = isAppEcho ? (value.message_echoes ?? []) : []
+      const historyChunks = isHistory ? (value.history ?? []) : []
+      if (
+        messages.length === 0 &&
+        echoes.length === 0 &&
+        historyChunks.length === 0
+      ) {
+        continue
+      }
 
       const phoneNumberId = value.metadata.phone_number_id
+      if (!phoneNumberId) {
+        console.error(
+          `[webhook] ${change.field} event has no phone_number_id; skipping`
+        )
+        continue
+      }
 
       // Find user's config by phone_number_id. `.single()` returns
       // PGRST116 for both 0 rows AND ≥2 rows — distinguish them so
@@ -340,29 +378,178 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       const config = configRows[0]
 
       const decryptedAccessToken = decrypt(config.access_token)
+      const businessPhone =
+        value.metadata.display_phone_number ??
+        config.display_phone_number ??
+        ''
 
-      for (let i = 0; i < value.messages.length; i++) {
-        const message = value.messages[i]
-        const contact = value.contacts[i] || value.contacts[0]
+      for (let i = 0; i < messages.length; i++) {
+        const message = messages[i]
+        if (isHistory) {
+          await processCoexistenceMessage(
+            message,
+            undefined,
+            value.contacts,
+            businessPhone,
+            config,
+            decryptedAccessToken,
+            'history',
+            undefined
+          )
+        } else {
+          await processMessage(
+            message,
+            value.contacts?.[i] || value.contacts?.[0],
+            config.account_id,
+            config.user_id,
+            decryptedAccessToken,
+            config.mirror_inbound_media !== false
+          )
+        }
+      }
 
-        await processMessage(
+      for (const message of echoes) {
+        await processCoexistenceMessage(
           message,
-          contact,
-          // Tenancy — drives every contact / conversation lookup
-          // and the engines' active-row dispatch.
-          config.account_id,
-          // Audit / sender-of-record — used as the user_id on row
-          // inserts that need it for NOT NULL FK compliance. Always
-          // the admin who saved the WhatsApp config.
-          config.user_id,
+          undefined,
+          value.contacts,
+          businessPhone,
+          config,
           decryptedAccessToken,
-          // Default ON: the column is NOT NULL DEFAULT TRUE, but a row
-          // read before migration 039 lands would have it undefined,
-          // and losing attachments is the failure mode worth avoiding.
-          config.mirror_inbound_media !== false
+          'business_app_echo',
+          undefined
         )
       }
+
+      for (const chunk of historyChunks) {
+        if (chunk.errors?.length) {
+          const declined = chunk.errors.some((error) => error.code === 2593109)
+          const reason =
+            chunk.errors[0].title ??
+            chunk.errors[0].message ??
+            'History synchronization failed'
+          console.warn('[webhook] WhatsApp history sync returned an error:', reason)
+          await updateHistorySyncState(phoneNumberId, {
+            state: declined ? 'declined' : 'failed',
+            error: reason,
+          })
+          continue
+        }
+
+        for (const thread of chunk.threads ?? []) {
+          for (const message of thread.messages ?? []) {
+            await processCoexistenceMessage(
+              message,
+              thread.id,
+              value.contacts,
+              businessPhone,
+              config,
+              decryptedAccessToken,
+              'history',
+              normalizeCoexistenceMessageStatus(
+                message.history_context?.status
+              )
+            )
+          }
+        }
+
+        const progress = chunk.metadata?.progress
+        if (
+          typeof progress === 'number' &&
+          Number.isFinite(progress) &&
+          progress >= 0 &&
+          progress <= 100
+        ) {
+          await updateHistorySyncProgress(phoneNumberId, progress)
+        }
+      }
     }
+  }
+}
+
+async function processCoexistenceMessage(
+  message: WhatsAppMessage,
+  threadId: string | undefined,
+  contacts: WaContactPayload[] | undefined,
+  businessPhone: string,
+  config: Record<string, unknown>,
+  accessToken: string,
+  source: 'history' | 'business_app_echo',
+  status: CoexistenceMessageStatus | undefined
+) {
+  const direction = resolveCoexistenceMessageDirection(
+    message,
+    threadId,
+    businessPhone
+  )
+  if (!direction || (source === 'business_app_echo' && direction.senderType !== 'agent')) {
+    console.warn(
+      `[webhook] ${source} message has no usable customer identity; skipping:`,
+      message.id
+    )
+    return
+  }
+
+  const contact =
+    contacts?.find(
+      (candidate) =>
+        normalizePhone(candidate.wa_id ?? '') === direction.contactPhone
+    ) ?? { wa_id: direction.contactPhone, profile: {} }
+
+  await processMessage(
+    message,
+    contact,
+    config.account_id as string,
+    config.user_id as string,
+    accessToken,
+    config.mirror_inbound_media !== false,
+    {
+      source,
+      senderType: direction.senderType,
+      contactPhone: direction.contactPhone,
+      status: status ?? 'sent',
+    }
+  )
+}
+
+async function updateHistorySyncProgress(
+  phoneNumberId: string,
+  progress: number
+) {
+  const state = progress >= 100 ? 'completed' : 'syncing'
+  const { error } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .update({
+      smb_history_sync_progress: progress,
+      smb_history_sync_status: state,
+      smb_history_sync_error: null,
+    })
+    .eq('phone_number_id', phoneNumberId)
+    .lt('smb_history_sync_progress', progress)
+    .neq('smb_history_sync_status', 'completed')
+    .neq('smb_history_sync_status', 'declined')
+    .neq('smb_history_sync_status', 'failed')
+
+  if (error) {
+    console.error('[webhook] Failed to record history sync progress:', error)
+  }
+}
+
+async function updateHistorySyncState(
+  phoneNumberId: string,
+  update: { state: 'declined' | 'failed'; error: string }
+) {
+  const { error } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .update({
+      smb_history_sync_status: update.state,
+      smb_history_sync_error: update.error,
+    })
+    .eq('phone_number_id', phoneNumberId)
+    .neq('smb_history_sync_status', 'completed')
+
+  if (error) {
+    console.error('[webhook] Failed to record history sync error:', error)
   }
 }
 
@@ -382,6 +569,9 @@ const RECIPIENT_STATUS_LADDER = [
   'read',
   'replied',
 ] as const
+
+const HISTORY_MEDIA_PLACEHOLDER =
+  'application/x-wacrm-history-media-placeholder'
 
 function ladderLevel(s: string): number {
   const idx = (RECIPIENT_STATUS_LADDER as readonly string[]).indexOf(s)
@@ -664,11 +854,20 @@ async function processMessage(
   accessToken: string,
   // Per-account opt-out for the inbound-media mirror (migration 039).
   // See parseMessageContent for what it turns off.
-  mirrorMedia: boolean
+  mirrorMedia: boolean,
+  coexistence?: {
+    source: 'history' | 'business_app_echo'
+    senderType: CoexistenceSenderType
+    contactPhone: string
+    status: CoexistenceMessageStatus
+  }
 ) {
   // Phone number OR business-scoped user ID — Meta sends only the
   // latter for a sender who has adopted a WhatsApp username (#519).
-  const identity = resolveInboundIdentity(message, contact)
+  const identityMessage = coexistence
+    ? { ...message, from: coexistence.contactPhone }
+    : message
+  const identity = resolveInboundIdentity(identityMessage, contact)
   if (!hasUsableIdentity(identity)) {
     // Neither key present. Creating a row anyway would mean an
     // unreachable contact that can never be matched again, so drop the
@@ -702,7 +901,7 @@ async function processMessage(
   // the reaction short-circuit below — so a conversation first opened by
   // a reaction still fires the event, and a subscriber always sees the
   // thread open before its first message.received.
-  if (convResult.created) {
+  if (convResult.created && !coexistence) {
     await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
@@ -712,18 +911,33 @@ async function processMessage(
   // Reactions short-circuit here — they aren't messages. We never insert
   // into `messages`, never bump unread_count, never update last_message_text.
   // Done before parseMessageContent so the media-URL fetch is skipped.
-  if (message.type === 'reaction') {
+  if (message.type === 'reaction' && !coexistence) {
     await handleReaction(message, conversation.id, contactRecord.id)
     return
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(
+  const isHistoryMediaPlaceholder =
+    coexistence?.source === 'history' && message.type === 'media_placeholder'
+  const parsedContent = isHistoryMediaPlaceholder
+    ? {
+        contentText: '[media]',
+        mediaUrl: null,
+        mediaType: 'application/x-wacrm-history-media-placeholder',
+        interactiveReplyId: null,
+      }
+    : await parseMessageContent(
       message,
       accessToken,
       mirrorMedia ? { accountId } : null
     )
+  const { contentText, mediaUrl, mediaType, interactiveReplyId } = parsedContent
+  const messageTimestamp = Number(message.timestamp)
+  if (!Number.isFinite(messageTimestamp) || messageTimestamp <= 0) {
+    console.error('[webhook] message has an invalid timestamp; skipping:', message.id)
+    return
+  }
+  const createdAt = new Date(messageTimestamp * 1000).toISOString()
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
@@ -758,7 +972,7 @@ async function processMessage(
   ])
   const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
     ? message.type
-    : message.type === 'sticker'
+    : isHistoryMediaPlaceholder || message.type === 'sticker'
       ? 'image'         // stickers are images
       : message.type === 'button'
         ? 'interactive' // template quick-reply tap (issue #478)
@@ -768,12 +982,15 @@ async function processMessage(
   // BEFORE we insert, so the count is accurate. Covers the case where
   // the contact row already exists (manual add / CSV import) but they've
   // never messaged us before — which new_contact_created wouldn't catch.
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
-    .from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('conversation_id', conversation.id)
-    .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
+  const { count: priorCustomerMsgCount } = coexistence
+    ? { count: 1 }
+    : await supabaseAdmin()
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conversation.id)
+        .eq('sender_type', 'customer')
+  const isFirstInboundMessage =
+    !coexistence && (priorCustomerMsgCount ?? 0) === 0
 
   // Idempotent insert. Meta retries webhook deliveries (a slow ack, a
   // transient 5xx), and each retry replays the exact same message.id. The
@@ -788,7 +1005,7 @@ async function processMessage(
     .upsert(
       {
         conversation_id: conversation.id,
-        sender_type: 'customer',
+        sender_type: coexistence?.senderType ?? 'customer',
         content_type: contentType,
         content_text: contentText,
         media_url: mediaUrl,
@@ -798,8 +1015,8 @@ async function processMessage(
         // bytes had already been fetched successfully.
         media_type: mediaType,
         message_id: message.id,
-        status: 'delivered',
-        created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+        status: coexistence?.status ?? 'delivered',
+        created_at: createdAt,
         reply_to_message_id: replyToInternalId,
         // Only populated for content_type='interactive'. Migration 010 added
         // the column; null for every other content_type so existing inserts
@@ -820,9 +1037,52 @@ async function processMessage(
   // re-advancing flows, re-firing automations, re-invoking AI handling, and
   // re-dispatching public webhooks (issue #367).
   if (!insertedRows || insertedRows.length === 0) {
+    if (
+      coexistence &&
+      !isHistoryMediaPlaceholder &&
+      mediaUrl &&
+      mediaType
+    ) {
+      const { error: placeholderError } = await supabaseAdmin()
+        .from('messages')
+        .update({
+          content_type: contentType,
+          content_text: contentText,
+          media_url: mediaUrl,
+          media_type: mediaType,
+          status: coexistence.status,
+        })
+        .eq('conversation_id', conversation.id)
+        .eq('message_id', message.id)
+        .eq('media_type', HISTORY_MEDIA_PLACEHOLDER)
+
+      if (placeholderError) {
+        console.error(
+          '[webhook] failed to add media to historical placeholder:',
+          placeholderError
+        )
+      } else {
+        await updateConversationSummaryIfNewer(
+          conversation.id,
+          conversation,
+          createdAt,
+          contentText || `[${contentType}]`
+        )
+      }
+    }
     console.info(
-      '[webhook] duplicate inbound message ignored (idempotent replay):',
+      '[webhook] duplicate message ignored (idempotent replay):',
       message.id
+    )
+    return
+  }
+
+  if (coexistence) {
+    await updateConversationSummaryIfNewer(
+      conversation.id,
+      conversation,
+      createdAt,
+      contentText || `[${contentType}]`
     )
     return
   }
@@ -844,6 +1104,35 @@ async function processMessage(
 
   if (convError) {
     console.error('Error updating conversation:', convError)
+  }
+
+  async function updateConversationSummaryIfNewer(
+    conversationId: string,
+    conversation: { last_message_at?: string | null },
+    messageDate: string,
+    preview: string
+  ) {
+    const previousDate = conversation.last_message_at
+      ? Date.parse(conversation.last_message_at)
+      : 0
+    const incomingDate = Date.parse(messageDate)
+    if (incomingDate <= previousDate) return
+
+    const { error } = await supabaseAdmin()
+      .from('conversations')
+      .update({
+        last_message_text: preview,
+        last_message_at: messageDate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId)
+
+    if (error) {
+      console.error(
+        '[webhook] failed to update conversation summary for synchronized message:',
+        error
+      )
+    }
   }
 
   // A customer writing again re-opens the thread (issue #409). Kept as a
