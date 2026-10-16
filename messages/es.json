@@ -1897,6 +1897,14 @@
     "appearance": {
       "title": "Apariencia",
       "description": "Define el modo y el color de acento que se usan en toda la app. Se guarda en este dispositivo; pruébalo, cambia al instante.",
+      "language": "Idioma de visualización",
+      "languageDescription": "Elige el idioma de la aplicación. Se guarda en este dispositivo.",
+      "languages": {
+        "en": "English",
+        "es": "Español",
+        "ko": "한국어",
+        "pt": "Português"
+      },
       "mode": "Modo",
       "colorMode": "Modo de color",
       "useMode": "Usar el modo {mode}",

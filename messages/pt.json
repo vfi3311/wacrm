@@ -1897,6 +1897,14 @@
     "appearance": {
       "title": "Aparência",
       "description": "Defina o modo e a cor de destaque usados no app. Salvo neste dispositivo — experimente, a mudança é imediata.",
+      "language": "Idioma de exibição",
+      "languageDescription": "Escolha o idioma usado no aplicativo. Salvo neste dispositivo.",
+      "languages": {
+        "en": "English",
+        "es": "Español",
+        "ko": "한국어",
+        "pt": "Português"
+      },
       "mode": "Modo",
       "colorMode": "Modo de cor",
       "useMode": "Usar o modo {mode}",

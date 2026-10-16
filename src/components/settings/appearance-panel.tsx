@@ -1,28 +1,38 @@
 "use client";
 
-import { Check, Moon, Palette, SunMoon, Sun } from "lucide-react";
+import { Check, Languages, Moon, Palette, SunMoon, Sun } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
 import { useTheme } from "@/hooks/use-theme";
+import { isLocale, LOCALE_COOKIE_NAME, SUPPORTED_LOCALES } from "@/lib/i18n";
 import { MODES, THEMES, type Mode, type ThemeId } from "@/lib/themes";
 import { cn } from "@/lib/utils";
-import { useTranslations } from "next-intl";
 import { SettingsPanelHead } from "./settings-panel-head";
 
 /**
- * Appearance panel — light/dark mode + accent-color picker.
+ * Appearance panel — display language, light/dark mode + accent-color picker.
  *
- * Two independent controls: a mode toggle (light / dark) and the
- * accent grid. Either applies + persists immediately. No save button:
- * each change is a single attribute swap on <html>, there's nothing
- * to roll back.
- *
- * Persistence: localStorage only (device-scoped). The boot script in
- * layout.tsx replays both choices before first paint on subsequent
- * loads.
+ * Each control applies and persists immediately. Theme preferences are
+ * device-scoped in localStorage; the display language is stored in a cookie
+ * so the server can load the matching message catalogue on the next refresh.
  */
 export function AppearancePanel() {
   const { theme, setTheme, mode, setMode } = useTheme();
   const t = useTranslations("Settings.appearance");
+  const locale = useLocale();
+  const router = useRouter();
+
+  function changeLocale(value: string) {
+    if (!isLocale(value)) {
+      throw new Error(`Unsupported display language: ${value}`);
+    }
+    if (value === locale) return;
+
+    const secure = window.location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `${LOCALE_COOKIE_NAME}=${value}; path=/; max-age=31536000; samesite=lax${secure}`;
+    router.refresh();
+  }
 
   return (
     <section className="max-w-3xl animate-in fade-in-50 duration-200">
@@ -30,6 +40,30 @@ export function AppearancePanel() {
         title={t("title")}
         description={t("description")}
       />
+
+      <div className="mb-8 space-y-4">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Languages className="size-4 text-muted-foreground" />
+          {t("language")}
+        </h3>
+        <div className="grid gap-2 sm:max-w-xs">
+          <select
+            value={locale}
+            onChange={(event) => changeLocale(event.currentTarget.value)}
+            aria-label={t("language")}
+            className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          >
+            {SUPPORTED_LOCALES.map((supportedLocale) => (
+              <option key={supportedLocale} value={supportedLocale}>
+                {t(`languages.${supportedLocale}`)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {t("languageDescription")}
+          </p>
+        </div>
+      </div>
 
       <div className="space-y-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">

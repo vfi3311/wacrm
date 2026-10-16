@@ -1897,6 +1897,14 @@
     "appearance": {
       "title": "화면 설정",
       "description": "앱 전체에서 사용할 모드와 강조 색상을 설정합니다. 이 기기에 저장되며, 바로 적용되니 자유롭게 시도해보세요.",
+      "language": "표시 언어",
+      "languageDescription": "앱에서 사용할 언어를 선택합니다. 이 기기에 저장됩니다.",
+      "languages": {
+        "en": "English",
+        "es": "Español",
+        "ko": "한국어",
+        "pt": "Português"
+      },
       "mode": "모드",
       "colorMode": "색상 모드",
       "useMode": "{mode} 모드 사용",
